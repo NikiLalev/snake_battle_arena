@@ -81,11 +81,10 @@
             opacity: 0.5;
             cursor: not-allowed;
             transform: none;
-        }
-
-        .game-area {
+        }        .game-area {
             display: none;
-            margin-top: 20px;
+            margin-top: 0px;
+            position: relative;
         }
 
         canvas {
@@ -148,10 +147,63 @@
 
         .error {
             background: rgba(255, 0, 0, 0.3);
+        }        .success {
+            background: rgba(0, 255, 0, 0.3);
+        }        /* Countdown overlay styles */
+        .countdown-overlay {
+            position: absolute;
+            top: calc(50% + 50px);
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 800px;
+            height: 600px;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+            border-radius: 10px;
+            border: 3px solid rgba(255, 255, 255, 0.5);
         }
 
-        .success {
-            background: rgba(0, 255, 0, 0.3);
+        .countdown-display {
+            text-align: center;
+            color: white;
+        }
+
+        .countdown-number {
+            font-size: 8em;
+            font-weight: bold;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.8);
+            animation: countdownPulse 1s ease-in-out;
+            margin: 0;
+        }
+
+        .countdown-text {
+            font-size: 2em;
+            margin-top: 20px;
+            opacity: 0.9;
+        }
+
+        .go-text {
+            font-size: 6em;
+            font-weight: bold;
+            color: #4CAF50;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.8);
+            animation: goAnimation 0.8s ease-out;
+        }
+
+        @keyframes countdownPulse {
+            0% { transform: scale(0.8); opacity: 0; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes goAnimation {
+            0% { transform: scale(0.5) rotate(-10deg); opacity: 0; }
+            50% { transform: scale(1.2) rotate(5deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
         }
 
         /* Popup styles */
@@ -271,15 +323,21 @@
             <h3>Room: <span id="currentRoomId"></span></h3>
             <div id="playersList" class="players-list"></div>
             <button id="startGame" style="display: none;">Start Game</button>
-        </div>
-
-        <div id="gameArea" class="game-area">
+        </div>        <div id="gameArea" class="game-area">
             <div id="scoreboard" class="scoreboard"></div>
             <canvas id="gameCanvas" width="800" height="600"></canvas>
             <div class="controls">
                 <p>🎮 Use Arrow Keys or WASD to move</p>
                 <p>🍎 Eat red food to grow and score points</p>
                 <p>⚠️ Avoid walls and other snakes</p>
+            </div>
+        </div>
+
+        <!-- Countdown overlay -->
+        <div id="countdownOverlay" class="countdown-overlay" style="display: none;">
+            <div class="countdown-display">
+                <div id="countdownNumber" class="countdown-number"></div>
+                <div id="countdownText" class="countdown-text">Get Ready!</div>
             </div>
         </div>
     </div>
@@ -302,10 +360,12 @@
         const roomIdInput = document.getElementById('roomId');
         const createRoomBtn = document.getElementById('createRoom');
         const joinRoomBtn = document.getElementById('joinRoom');
-        const startGameBtn = document.getElementById('startGame');
-        const currentRoomIdSpan = document.getElementById('currentRoomId');
+        const startGameBtn = document.getElementById('startGame');        const currentRoomIdSpan = document.getElementById('currentRoomId');
         const playersListDiv = document.getElementById('playersList');
         const scoreboardDiv = document.getElementById('scoreboard');
+        const countdownOverlay = document.getElementById('countdownOverlay');
+        const countdownNumber = document.getElementById('countdownNumber');
+        const countdownText = document.getElementById('countdownText');
         
         // Initialize canvas
         function initCanvas() {
@@ -445,13 +505,35 @@
             console.log('Canvas initialized, waiting for countdown...');
             // Don't set gameRunning = true here, wait for actual game state
         });
-        
-        socket.on('countdown', (data) => {
+          socket.on('countdown', (data) => {
             console.log('Countdown:', data.count);
+            
+            // Show countdown overlay
+            countdownOverlay.style.display = 'flex';
+            
             if (data.count > 0) {
+                // Show countdown number
+                countdownNumber.textContent = data.count;
+                countdownNumber.className = 'countdown-number';
+                countdownText.textContent = 'Get Ready!';
+                countdownText.className = 'countdown-text';
+                
+                // Also show in status for backup
                 showStatus(`Starting in ${data.count}...`);
             } else {
+                // Show "GO!" message
+                countdownNumber.textContent = 'GO!';
+                countdownNumber.className = 'go-text';
+                countdownText.textContent = 'Fight!';
+                countdownText.className = 'countdown-text';
+                
                 showStatus('GO!');
+                
+                // Hide countdown overlay after showing GO!
+                setTimeout(() => {
+                    countdownOverlay.style.display = 'none';
+                }, 1000);
+                
                 console.log('Countdown finished, waiting for game state...');
             }
         });
