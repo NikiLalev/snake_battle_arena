@@ -25,6 +25,35 @@ GRID_SIZE = 20
 CANVAS_WIDTH = 800
 CANVAS_HEIGHT = 600
 
+# Funny mean comments for dead players
+MEAN_COMMENTS = [
+    "You suck! 😂",
+    "Haha you died! 💀",
+    "Better luck next time, loser! 🐍",
+    "That was embarrassing! 😆",
+    "You call that snake skills? 🙄",
+    "Even a turtle could play better! 🐢",
+    "Your snake died of shame! 😂",
+    "Did you forget how to use arrow keys? ⌨️",
+    "That was painful to watch! 😬",
+    "Maybe try checkers instead? 🔴",
+    "RIP your dignity! ⚰️",
+    "Your snake had commitment issues! 💔",
+    "I've seen rocks move faster! 🪨",
+    "That crash was epic! 💥",
+    "Snake.exe has stopped working! 🖥️",
+    "You got outplayed by a wall! 🧱",
+    "Press F to pay respects... to your skills! F",
+    "Your snake just rage quit! 😤",
+    "That's what we call a 'tactical disaster'! 🎯",
+    "Next time, try not dying! 💡",
+    "Skill issue detected! 🚨",
+    "Your snake went to the graveyard! 🪦",
+    "That was a masterclass in how NOT to play! 📚",
+    "Game over, man! Game over! 🎮",
+    "You made that look so easy... to lose! 🤣"
+]
+
 @app.route('/')
 def index():
     """Main game page"""
@@ -43,6 +72,7 @@ class Snake:
         self.color = color
         self.alive = True
         self.score = 0
+        self.just_died = False  # New field to track fresh deaths
     
     def move(self):
         if not self.alive or not self.body:
@@ -68,22 +98,26 @@ class Snake:
             return
             
         head = self.body[0]
+        was_alive = self.alive
         
         # Wall collision
         if head[0] < 0 or head[0] >= width or head[1] < 0 or head[1] >= height:
             self.alive = False
-            return
         
         # Self collision
-        if head in self.body[1:]:
+        elif head in self.body[1:]:
             self.alive = False
-            return
         
         # Other snakes collision
-        for snake in other_snakes:
-            if snake != self and head in snake.body:
-                self.alive = False
-                return
+        else:
+            for snake in other_snakes:
+                if snake != self and head in snake.body:
+                    self.alive = False
+                    break
+        
+        # Mark as just died if it was alive and now isn't
+        if was_alive and not self.alive:
+            self.just_died = True
 
 class Food:
     def __init__(self, width, height):
@@ -115,6 +149,8 @@ class Game:
         self.countdown_active = False
         self.game_started = False
         self.last_update = time.time()
+        self.dead_players = set()  # Track players who have died
+        self.game_winner = None  # Track the winner
     
     def add_player(self, player_id, player_name):
         colors = ['#ff4444', '#44ff44', '#4444ff', '#ffff44']
@@ -153,6 +189,11 @@ class Game:
             snake.direction = 'RIGHT'
             snake.alive = True
             snake.score = 0
+            snake.just_died = False
+        
+        # Reset death tracking
+        self.dead_players.clear()
+        self.game_winner = None
         
         # Start countdown in separate thread
         countdown_thread = threading.Thread(target=self.countdown, daemon=True)
@@ -208,6 +249,18 @@ class Game:
         for snake in self.snakes.values():
             snake.check_collision(width, height, list(self.snakes.values()))
         
+        # Handle death events
+        for player_id, snake in self.snakes.items():
+            if snake.just_died:
+                snake.just_died = False  # Reset the flag
+                self.dead_players.add(player_id)
+                player_name = self.players[player_id]['name']
+                
+                # Emit death event to the specific player
+                socketio.emit('player_died', {
+                    'player_name': player_name
+                }, room=player_id)
+        
         # Check food collision and handle snake growth
         food_eaten = False
         for player_id, snake in self.snakes.items():
@@ -225,9 +278,25 @@ class Game:
             self.food.respawn(width, height, list(self.snakes.values()))
         
         # Check if game should end
-        alive_snakes = [s for s in self.snakes.values() if s.alive]
+        alive_snakes = [(pid, s) for pid, s in self.snakes.items() if s.alive]
         if len(alive_snakes) <= 1 and len(self.snakes) > 1:
             self.game_running = False
+            
+            # Determine winner
+            if len(alive_snakes) == 1:
+                winner_id, winner_snake = alive_snakes[0]
+                self.game_winner = {
+                    'player_id': winner_id,
+                    'player_name': self.players[winner_id]['name'],
+                    'score': winner_snake.score
+                }
+                
+                # Emit winner event to the winner
+                socketio.emit('player_won', {
+                    'player_name': self.game_winner['player_name'],
+                    'score': self.game_winner['score']
+                }, room=winner_id)
+            
             # Reset flags to allow new game
             self.game_started = False
             self.countdown_active = False
@@ -390,6 +459,26 @@ def on_player_move(data):
     if direction != opposite.get(snake.direction):
         snake.direction = direction
 
+def send_mean_comments():
+    """Send periodic mean comments to dead players"""
+    while True:
+        try:
+            for room_id, game in list(games.items()):
+                if game.game_running and game.dead_players:
+                    # Send a random mean comment to a random dead player
+                    if game.dead_players:
+                        dead_player = random.choice(list(game.dead_players))
+                        comment = random.choice(MEAN_COMMENTS)
+                        socketio.emit('mean_comment', {
+                            'comment': comment
+                        }, room=dead_player)
+            
+            # Wait 3-8 seconds before sending another comment
+            time.sleep(random.uniform(3.0, 8.0))
+            
+        except Exception as e:
+            time.sleep(5)
+
 def game_loop():
     """Main game loop"""
     while True:
@@ -421,9 +510,12 @@ def game_loop():
         except Exception as e:
             time.sleep(1)
 
-# Start the game loop
+# Start the game loop and mean comments thread
 game_thread = threading.Thread(target=game_loop, daemon=True)
 game_thread.start()
+
+mean_comments_thread = threading.Thread(target=send_mean_comments, daemon=True)
+mean_comments_thread.start()
 
 if __name__ == '__main__':
     try:

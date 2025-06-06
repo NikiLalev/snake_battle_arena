@@ -153,6 +153,97 @@
         .success {
             background: rgba(0, 255, 0, 0.3);
         }
+
+        /* Popup styles */
+        .popup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .popup {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 30px 40px;
+            border-radius: 20px;
+            text-align: center;
+            color: white;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            animation: popupAnimation 0.5s ease-out;
+            max-width: 400px;
+            min-width: 300px;
+        }
+
+        .popup h2 {
+            font-size: 2em;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .popup p {
+            font-size: 1.2em;
+            margin-bottom: 20px;
+        }
+
+        .popup.death {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        }
+
+        .popup.winner {
+            background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
+        }
+
+        .popup.mean-comment {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+            color: #333;
+            padding: 20px 30px;
+            animation: meanCommentAnimation 0.3s ease-out;
+        }
+
+        @keyframes popupAnimation {
+            from {
+                transform: scale(0.7) rotate(-5deg);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+        }
+
+        @keyframes meanCommentAnimation {
+            from {
+                transform: scale(0.8) translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1) translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .close-popup {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 15px;
+        }
+
+        .close-popup:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -200,6 +291,7 @@
         let currentRoom = null;
         let gameRunning = false;
         let canvas, ctx;
+        let currentPlayerId = null; // Track the current player's ID
         
         // DOM elements
         const lobby = document.getElementById('lobby');
@@ -305,6 +397,7 @@
         socket.on('room_created', (data) => {
             console.log('Room created:', data);
             currentRoom = data.roomId;
+            currentPlayerId = socket.id; // Set current player ID
             currentRoomIdSpan.textContent = data.roomId;
             
             lobby.style.display = 'none';
@@ -317,6 +410,7 @@
         socket.on('room_joined', (data) => {
             console.log('Room joined:', data);
             currentRoom = data.roomId;
+            currentPlayerId = socket.id; // Set current player ID
             currentRoomIdSpan.textContent = data.roomId;
             lobby.style.display = 'none';
             roomInfo.style.display = 'block';
@@ -426,10 +520,21 @@
                 console.log(`  - Color: ${snake.color}`);
                 console.log(`  - Alive: ${snake.alive}`);
                 console.log(`  - Score: ${snake.score}`);
+                console.log(`  - Is current player: ${playerId === currentPlayerId}`);
                 
                 if (!snake.alive) {
                     console.log(`  - SKIPPING (dead)`);
                     continue;
+                }
+                
+                const isCurrentPlayer = playerId === currentPlayerId;
+                
+                // Add glow effect for current player
+                if (isCurrentPlayer) {
+                    ctx.shadowColor = snake.color;
+                    ctx.shadowBlur = 15;
+                    ctx.shadowOffsetX = 0;
+                    ctx.shadowOffsetY = 0;
                 }
                 
                 ctx.fillStyle = snake.color;
@@ -444,15 +549,36 @@
                         // Head - make it more visible
                         ctx.fillStyle = snake.color;
                         ctx.fillRect(x + 1, y + 1, gridSize - 2, gridSize - 2);
-                        // Add border for head
-                        ctx.strokeStyle = '#fff';
-                        ctx.lineWidth = 2;
-                        ctx.strokeRect(x + 1, y + 1, gridSize - 2, gridSize - 2);
+                        
+                        // Add border for head (enhanced for current player)
+                        if (isCurrentPlayer) {
+                            ctx.strokeStyle = '#fff';
+                            ctx.lineWidth = 3;
+                            ctx.strokeRect(x + 1, y + 1, gridSize - 2, gridSize - 2);
+                            // Add inner glow border
+                            ctx.strokeStyle = snake.color;
+                            ctx.lineWidth = 1;
+                            ctx.strokeRect(x + 2, y + 2, gridSize - 4, gridSize - 4);
+                        } else {
+                            ctx.strokeStyle = '#fff';
+                            ctx.lineWidth = 2;
+                            ctx.strokeRect(x + 1, y + 1, gridSize - 2, gridSize - 2);
+                        }
                     } else {
                         // Body
                         ctx.fillStyle = snake.color;
-                        ctx.fillRect(x + 3, y + 3, gridSize - 6, gridSize - 6);
+                        if (isCurrentPlayer) {
+                            // Slightly larger body segments for current player
+                            ctx.fillRect(x + 2, y + 2, gridSize - 4, gridSize - 4);
+                        } else {
+                            ctx.fillRect(x + 3, y + 3, gridSize - 6, gridSize - 6);
+                        }
                     }
+                }
+                
+                // Reset shadow for other snakes
+                if (isCurrentPlayer) {
+                    ctx.shadowBlur = 0;
                 }
             }
             
@@ -478,15 +604,215 @@
             console.error('Socket error:', data);
             showStatus(data.message, true);
         });
+
+        // New event handlers for death, winning, and mean comments
+        socket.on('player_died', (data) => {
+            console.log('Player died:', data);
+            showPopup('death', '💀 You Died!', `Sorry ${data.player_name}, you lost this round!`, true);
+        });
+
+        socket.on('player_won', (data) => {
+            console.log('Player won:', data);
+            showPopup('winner', '🎉 Victory!', `Congratulations ${data.player_name}! You won with ${data.score} points!`, true);
+        });
+
+        socket.on('mean_comment', (data) => {
+            console.log('Mean comment:', data);
+            showMeanComment(data.comment);
+        });
         
         // Helper functions
+        function showPopup(type, title, message, showCloseButton = false, autoCloseTime = null) {
+            // Remove any existing popups first (except mean comments)
+            const existingPopups = document.querySelectorAll('.popup-overlay:not(.mean-comment-overlay)');
+            existingPopups.forEach(popup => popup.remove());
+
+            // Create popup overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'popup-overlay';
+
+            // Create popup content
+            const popup = document.createElement('div');
+            popup.className = `popup ${type}`;
+
+            popup.innerHTML = `
+                <h2>${title}</h2>
+                <p>${message}</p>
+                ${showCloseButton ? '<button class="close-popup" onclick="this.closest(\'.popup-overlay\').remove()">Close</button>' : ''}
+            `;
+
+            overlay.appendChild(popup);
+            document.body.appendChild(overlay);
+
+            // Auto-close if specified
+            if (autoCloseTime) {
+                setTimeout(() => {
+                    if (overlay.parentNode) {
+                        overlay.remove();
+                    }
+                }, autoCloseTime);
+            }
+
+            // Close on overlay click (but not popup click)
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    overlay.remove();
+                }
+            });
+        }
+
+        function showMeanComment(comment) {
+            // Create a small floating comment that appears randomly anywhere on screen
+            const meanCommentDiv = document.createElement('div');
+            meanCommentDiv.className = 'mean-comment-floating';
+            
+            // Calculate random positions across the entire screen
+            const maxWidth = window.innerWidth - 250; // Account for comment width
+            const maxHeight = window.innerHeight - 100; // Account for comment height
+            const randomX = Math.random() * Math.max(maxWidth, 100);
+            const randomY = Math.random() * Math.max(maxHeight, 100);
+            
+            // Choose random animation direction
+            const animations = ['bounceIn', 'slideInRandom', 'popIn', 'wiggleIn'];
+            const randomAnimation = animations[Math.floor(Math.random() * animations.length)];
+            
+            meanCommentDiv.style.cssText = `
+                position: fixed;
+                top: ${randomY}px;
+                left: ${randomX}px;
+                background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+                color: #333;
+                padding: 15px 20px;
+                border-radius: 15px;
+                border: 2px solid rgba(255, 255, 255, 0.5);
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+                z-index: 1001;
+                font-size: 14px;
+                font-weight: bold;
+                max-width: 250px;
+                animation: ${randomAnimation} 0.6s ease-out;
+                cursor: pointer;
+                transform-origin: center;
+            `;
+            meanCommentDiv.textContent = comment;
+
+            // Add CSS animations for random positioning
+            if (!document.querySelector('#meanCommentStyles')) {
+                const style = document.createElement('style');
+                style.id = 'meanCommentStyles';
+                style.textContent = `
+                    @keyframes bounceIn {
+                        from {
+                            transform: scale(0.3) rotate(-10deg);
+                            opacity: 0;
+                        }
+                        50% {
+                            transform: scale(1.1) rotate(5deg);
+                        }
+                        to {
+                            transform: scale(1) rotate(0deg);
+                            opacity: 1;
+                        }
+                    }
+                    @keyframes slideInRandom {
+                        from {
+                            transform: translateY(-50px) rotate(20deg);
+                            opacity: 0;
+                        }
+                        to {
+                            transform: translateY(0) rotate(0deg);
+                            opacity: 1;
+                        }
+                    }
+                    @keyframes popIn {
+                        from {
+                            transform: scale(0) rotate(180deg);
+                            opacity: 0;
+                        }
+                        50% {
+                            transform: scale(1.2) rotate(90deg);
+                        }
+                        to {
+                            transform: scale(1) rotate(0deg);
+                            opacity: 1;
+                        }
+                    }
+                    @keyframes wiggleIn {
+                        from {
+                            transform: scale(0.8) rotate(-15deg);
+                            opacity: 0;
+                        }
+                        25% {
+                            transform: scale(0.9) rotate(10deg);
+                        }
+                        50% {
+                            transform: scale(1.1) rotate(-5deg);
+                        }
+                        75% {
+                            transform: scale(0.95) rotate(3deg);
+                        }
+                        to {
+                            transform: scale(1) rotate(0deg);
+                            opacity: 1;
+                        }
+                    }
+                    @keyframes fadeOutScale {
+                        from {
+                            transform: scale(1) rotate(0deg);
+                            opacity: 1;
+                        }
+                        to {
+                            transform: scale(0.3) rotate(15deg);
+                            opacity: 0;
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            document.body.appendChild(meanCommentDiv);
+
+            // Remove on click
+            meanCommentDiv.addEventListener('click', () => {
+                meanCommentDiv.style.animation = 'fadeOutScale 0.3s ease-in forwards';
+                setTimeout(() => {
+                    if (meanCommentDiv.parentNode) {
+                        meanCommentDiv.remove();
+                    }
+                }, 300);
+            });
+
+            // Auto-remove after 3 seconds
+            setTimeout(() => {
+                if (meanCommentDiv.parentNode) {
+                    meanCommentDiv.style.animation = 'fadeOutScale 0.3s ease-in forwards';
+                    setTimeout(() => {
+                        if (meanCommentDiv.parentNode) {
+                            meanCommentDiv.remove();
+                        }
+                    }, 300);
+                }
+            }, 3000);
+        }
+
         function updatePlayersList(players) {
             playersListDiv.innerHTML = '';
             players.forEach(player => {
                 const playerCard = document.createElement('div');
+                const isCurrentPlayer = player.id === currentPlayerId;
+                
                 playerCard.className = 'player-card';
                 playerCard.style.borderLeftColor = player.color;
-                playerCard.textContent = player.name;
+                
+                // Highlight current player in lobby
+                if (isCurrentPlayer) {
+                    playerCard.style.backgroundColor = 'rgba(255, 255, 255, 0.4)';
+                    playerCard.style.fontWeight = 'bold';
+                    playerCard.textContent = `👤 ${player.name} (You)`;
+                } else {
+                    playerCard.textContent = player.name;
+                }
+                
                 playersListDiv.appendChild(playerCard);
             });
         }
@@ -495,10 +821,22 @@
             scoreboardDiv.innerHTML = '';
             for (const [playerId, snake] of Object.entries(snakes)) {
                 const scoreCard = document.createElement('div');
+                const isCurrentPlayer = playerId === currentPlayerId;
+                
                 scoreCard.className = 'player-score';
                 scoreCard.style.backgroundColor = snake.color + '40';
+                
+                // Add glow effect for current player in scoreboard
+                if (isCurrentPlayer) {
+                    scoreCard.style.border = `2px solid ${snake.color}`;
+                    scoreCard.style.boxShadow = `0 0 15px ${snake.color}80`;
+                    scoreCard.style.transform = 'scale(1.05)';
+                }
+                
                 scoreCard.innerHTML = `
-                    <div style="color: ${snake.color}">Player</div>
+                    <div style="color: ${snake.color}; font-weight: ${isCurrentPlayer ? 'bold' : 'normal'}">
+                        ${isCurrentPlayer ? '👤 You' : 'Player'}
+                    </div>
                     <div>Score: ${snake.score}</div>
                     <div>${snake.alive ? '🐍 Alive' : '💀 Dead'}</div>
                 `;
