@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Snake Battle</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 90%;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .lobby {
+            margin-bottom: 30px;
+        }
+
+        .input-group {
+            margin: 20px 0;
+        }
+
+        input {
+            padding: 12px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 25px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            margin: 5px;
+            min-width: 200px;
+        }
+
+        button {
+            padding: 12px 25px;
+            font-size: 16px;
+            border: none;
+            border-radius: 25px;
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .game-area {
+            display: none;
+            margin-top: 20px;
+        }
+
+        canvas {
+            border: 3px solid rgba(255, 255, 255, 0.5);
+            border-radius: 10px;
+            background: #000;
+            display: block;
+            margin: 20px auto;
+        }
+
+        .scoreboard {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .player-score {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 15px;
+            margin: 5px;
+            min-width: 150px;
+        }
+
+        .controls {
+            margin-top: 20px;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .room-info {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+
+        .players-list {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .player-card {
+            background: rgba(255, 255, 255, 0.3);
+            padding: 10px 15px;
+            border-radius: 10px;
+            border-left: 4px solid;
+        }
+
+        .status {
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .error {
+            background: rgba(255, 0, 0, 0.3);
+        }
+
+        .success {
+            background: rgba(0, 255, 0, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐍 Snake Battle Arena</h1>
+        
+        <div id="lobby" class="lobby">
+            <div class="input-group">
+                <input type="text" id="playerName" placeholder="Enter your name" maxlength="20">
+            </div>
+            
+            <div class="input-group">
+                <button id="createRoom">Create New Game</button>
+            </div>
+            
+            <div class="input-group">
+                <input type="text" id="roomId" placeholder="Enter Room ID" maxlength="8">
+                <button id="joinRoom">Join Game</button>
+            </div>
+            
+            <div id="status" class="status" style="display: none;"></div>
+        </div>
+
+        <div id="roomInfo" class="room-info" style="display: none;">
+            <h3>Room: <span id="currentRoomId"></span></h3>
+            <div id="playersList" class="players-list"></div>
+            <button id="startGame" style="display: none;">Start Game</button>
+        </div>
+
+        <div id="gameArea" class="game-area">
+            <div id="scoreboard" class="scoreboard"></div>
+            <canvas id="gameCanvas" width="800" height="600"></canvas>
+            <div class="controls">
+                <p>🎮 Use Arrow Keys or WASD to move</p>
+                <p>🍎 Eat red food to grow and score points</p>
+                <p>⚠️ Avoid walls and other snakes</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        
+        // Game state
+        let currentRoom = null;
+        let gameRunning = false;
+        let canvas, ctx;
+        
+        // DOM elements
+        const lobby = document.getElementById('lobby');
+        const roomInfo = document.getElementById('roomInfo');
+        const gameArea = document.getElementById('gameArea');
+        const status = document.getElementById('status');
+        const playerNameInput = document.getElementById('playerName');
+        const roomIdInput = document.getElementById('roomId');
+        const createRoomBtn = document.getElementById('createRoom');
+        const joinRoomBtn = document.getElementById('joinRoom');
+        const startGameBtn = document.getElementById('startGame');
+        const currentRoomIdSpan = document.getElementById('currentRoomId');
+        const playersListDiv = document.getElementById('playersList');
+        const scoreboardDiv = document.getElementById('scoreboard');
+        
+        // Initialize canvas
+        function initCanvas() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+        }
+        
+        // Show status message
+        function showStatus(message, isError = false) {
+            status.textContent = message;
+            status.className = `status ${isError ? 'error' : 'success'}`;
+            status.style.display = 'block';
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 3000);
+        }
+        
+        // Event listeners
+        createRoomBtn.addEventListener('click', () => {
+            const playerName = playerNameInput.value.trim();
+            if (!playerName) {
+                showStatus('Please enter your name!', true);
+                return;
+            }
+            
+            console.log('Creating room with player name:', playerName);
+            socket.emit('create_room', { playerName: playerName });
+        });
+        
+        joinRoomBtn.addEventListener('click', () => {
+            const playerName = playerNameInput.value.trim();
+            const roomId = roomIdInput.value.trim();
+            
+            if (!playerName || !roomId) {
+                showStatus('Please enter your name and room ID!', true);
+                return;
+            }
+            
+            console.log('Joining room:', roomId, 'with player name:', playerName);
+            socket.emit('join_room', { roomId: roomId, playerName: playerName });
+        });
+        
+        startGameBtn.addEventListener('click', () => {
+            console.log('Start game button clicked');
+            startGameBtn.disabled = true;
+            startGameBtn.textContent = 'Starting...';
+            socket.emit('start_game');
+        });
+        
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (!gameRunning) {
+                console.log('Game not running, ignoring keypress');
+                return;
+            }
+            
+            let direction = null;
+            switch(e.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    direction = 'UP';
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    direction = 'DOWN';
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    direction = 'LEFT';
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    direction = 'RIGHT';
+                    break;
+            }
+            
+            if (direction) {
+                console.log('Sending move direction:', direction);
+                e.preventDefault();
+                socket.emit('player_move', { direction: direction });
+            }
+        });
+        
+        // Socket event handlers
+        socket.on('room_created', (data) => {
+            console.log('Room created:', data);
+            currentRoom = data.roomId;
+            currentRoomIdSpan.textContent = data.roomId;
+            
+            lobby.style.display = 'none';
+            roomInfo.style.display = 'block';
+            startGameBtn.style.display = 'block';
+            
+            showStatus(`Room created! Share ID: ${data.roomId}`);
+        });
+        
+        socket.on('room_joined', (data) => {
+            console.log('Room joined:', data);
+            currentRoom = data.roomId;
+            currentRoomIdSpan.textContent = data.roomId;
+            lobby.style.display = 'none';
+            roomInfo.style.display = 'block';
+            
+            updatePlayersList(data.players);
+            showStatus('Joined room successfully!');
+            
+            // Show start button only if you're the first player (room creator)
+            if (data.isRoomCreator) {
+                startGameBtn.style.display = 'block';
+            }
+        });
+        
+        socket.on('player_joined', (data) => {
+            console.log('Player joined:', data);
+            updatePlayersList(data.players); // Update with the new players list
+            showStatus(`${data.player_name} joined the game!`);
+        });
+        
+        socket.on('player_left', (data) => {
+            console.log('Player left:', data);
+            updatePlayersList(data.players); // Update with remaining players
+            showStatus('A player left the game');
+        });
+        
+        socket.on('game_started', () => {
+            console.log('Game started - showing game area');
+            roomInfo.style.display = 'none';
+            gameArea.style.display = 'block';
+            initCanvas();
+            showStatus('Game started!');
+            console.log('Canvas initialized, waiting for countdown...');
+            // Don't set gameRunning = true here, wait for actual game state
+        });
+        
+        socket.on('countdown', (data) => {
+            console.log('Countdown:', data.count);
+            if (data.count > 0) {
+                showStatus(`Starting in ${data.count}...`);
+            } else {
+                showStatus('GO!');
+                console.log('Countdown finished, waiting for game state...');
+            }
+        });
+        
+        socket.on('game_state', (gameState) => {
+            console.log('=== GAME STATE RECEIVED ===');
+            console.log('Game running:', gameState.running);
+            console.log('Snakes data:', gameState.snakes);
+            console.log('Food data:', gameState.food);
+            
+            if (!canvas || !ctx) {
+                console.log('Canvas not ready, initializing...');
+                initCanvas();
+                if (!canvas || !ctx) {
+                    console.error('Failed to initialize canvas');
+                    return;
+                }
+            }
+            
+            // Update gameRunning based on actual game state
+            if (gameState.running && !gameRunning) {
+                console.log('*** GAME IS NOW ACTUALLY RUNNING - ENABLING CONTROLS ***');
+                gameRunning = true;
+            } else if (!gameState.running && gameRunning) {
+                console.log('Game ended');
+                gameRunning = false;
+                showStatus('Game Over!');
+                setTimeout(() => {
+                    gameArea.style.display = 'none';
+                    roomInfo.style.display = 'block';
+                    startGameBtn.disabled = false;
+                    startGameBtn.textContent = 'Start Game';
+                }, 3000);
+                return; // Don't draw anything for ended game
+            }
+            
+            // Clear canvas with a visible background
+            ctx.fillStyle = '#001122';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const gridSize = 20;
+            
+            // Draw grid lines for debugging
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 0.5;
+            for (let x = 0; x <= canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+            
+            // Draw snakes
+            console.log('=== DRAWING SNAKES ===');
+            let snakeCount = 0;
+            for (const [playerId, snake] of Object.entries(gameState.snakes)) {
+                snakeCount++;
+                console.log(`Snake ${snakeCount} (${playerId}):`);
+                console.log(`  - Body: ${JSON.stringify(snake.body)}`);
+                console.log(`  - Color: ${snake.color}`);
+                console.log(`  - Alive: ${snake.alive}`);
+                console.log(`  - Score: ${snake.score}`);
+                
+                if (!snake.alive) {
+                    console.log(`  - SKIPPING (dead)`);
+                    continue;
+                }
+                
+                ctx.fillStyle = snake.color;
+                
+                for (const [index, segment] of snake.body.entries()) {
+                    const x = segment[0] * gridSize;
+                    const y = segment[1] * gridSize;
+                    
+                    console.log(`  - Drawing segment ${index} at grid(${segment[0]}, ${segment[1]}) = canvas(${x}, ${y})`);
+                    
+                    if (index === 0) {
+                        // Head - make it more visible
+                        ctx.fillStyle = snake.color;
+                        ctx.fillRect(x + 1, y + 1, gridSize - 2, gridSize - 2);
+                        // Add border for head
+                        ctx.strokeStyle = '#fff';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(x + 1, y + 1, gridSize - 2, gridSize - 2);
+                    } else {
+                        // Body
+                        ctx.fillStyle = snake.color;
+                        ctx.fillRect(x + 3, y + 3, gridSize - 6, gridSize - 6);
+                    }
+                }
+            }
+            
+            // Draw food
+            console.log('=== DRAWING FOOD ===');
+            console.log(`Food at grid(${gameState.food.x}, ${gameState.food.y})`);
+            const foodX = (gameState.food.x * gridSize) + (gridSize / 2);
+            const foodY = (gameState.food.y * gridSize) + (gridSize / 2);
+            console.log(`Food at canvas(${foodX}, ${foodY})`);
+            
+            ctx.fillStyle = '#ff4444';
+            ctx.beginPath();
+            ctx.arc(foodX, foodY, gridSize / 3, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Update scoreboard
+            updateScoreboard(gameState.snakes);
+            
+            console.log('=== GAME STATE PROCESSING COMPLETE ===');
+        });
+        
+        socket.on('error', (data) => {
+            console.error('Socket error:', data);
+            showStatus(data.message, true);
+        });
+        
+        // Helper functions
+        function updatePlayersList(players) {
+            playersListDiv.innerHTML = '';
+            players.forEach(player => {
+                const playerCard = document.createElement('div');
+                playerCard.className = 'player-card';
+                playerCard.style.borderLeftColor = player.color;
+                playerCard.textContent = player.name;
+                playersListDiv.appendChild(playerCard);
+            });
+        }
+        
+        function updateScoreboard(snakes) {
+            scoreboardDiv.innerHTML = '';
+            for (const [playerId, snake] of Object.entries(snakes)) {
+                const scoreCard = document.createElement('div');
+                scoreCard.className = 'player-score';
+                scoreCard.style.backgroundColor = snake.color + '40';
+                scoreCard.innerHTML = `
+                    <div style="color: ${snake.color}">Player</div>
+                    <div>Score: ${snake.score}</div>
+                    <div>${snake.alive ? '🐍 Alive' : '💀 Dead'}</div>
+                `;
+                scoreboardDiv.appendChild(scoreCard);
+            }
+        }
+        
+        // Allow Enter key to submit forms
+        playerNameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                createRoomBtn.click();
+            }
+        });
+        
+        roomIdInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                joinRoomBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>
