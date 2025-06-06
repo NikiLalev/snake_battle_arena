@@ -311,15 +311,22 @@
         .power-up-legend strong {
             color: #fff;
             margin-right: 10px;
-        }
-
-        .power-up-legend span {
+        }        .power-up-legend span {
             background: rgba(255, 255, 255, 0.1);
             padding: 3px 8px;
             border-radius: 15px;
             color: #fff;
             font-size: 11px;
             white-space: nowrap;
+        }
+
+        .blinking-power-up {
+            animation: powerUpBlink 0.5s infinite alternate;
+        }
+
+        @keyframes powerUpBlink {
+            0% { opacity: 0.3; }
+            100% { opacity: 1.0; }
         }
     </style>
 </head>
@@ -639,22 +646,34 @@
                 if (!snake.alive) {
                     console.log(`  - SKIPPING (dead)`);
                     continue;
-                }
-                  const isCurrentPlayer = playerId === currentPlayerId;
+                }                const isCurrentPlayer = playerId === currentPlayerId;
                 
-                // Check for power-up effects
-                const hasSpeedBoost = snake.speed_boost_time > 0;
-                const isInvincible = snake.invincible_time > 0;
-                const hasShield = snake.shield_active;
+                // Check for power-up effects using new structure
+                const powerUps = snake.power_ups || {};
+                const hasSpeedBoost = powerUps.speed_boost?.active || false;
+                const isInvincible = powerUps.invincible?.active || false;
+                const hasShield = powerUps.shield?.active || false;
                 
-                // Add glow effect for current player and power-ups
+                // Check for blinking effects (power-ups about to expire)
+                const speedBlinking = powerUps.speed_boost?.blinking || false;
+                const invincibleBlinking = powerUps.invincible?.blinking || false;
+                  // Add glow effect for current player and power-ups
                 if (isCurrentPlayer || hasSpeedBoost || isInvincible || hasShield) {
+                    // Apply blinking effect for expiring power-ups
+                    let glowIntensity = 1.0;
+                    if (speedBlinking || invincibleBlinking) {
+                        // Create blinking effect using timestamp
+                        const blinkSpeed = 8; // 8 blinks per second
+                        glowIntensity = (Math.sin(Date.now() / 1000 * blinkSpeed * Math.PI) + 1) / 2;
+                        glowIntensity = 0.3 + (glowIntensity * 0.7); // Range from 0.3 to 1.0
+                    }
+                    
                     if (isInvincible) {
                         ctx.shadowColor = '#4444ff';
-                        ctx.shadowBlur = 20;
+                        ctx.shadowBlur = 20 * glowIntensity;
                     } else if (hasSpeedBoost) {
                         ctx.shadowColor = '#ffff44';
-                        ctx.shadowBlur = 15;
+                        ctx.shadowBlur = 15 * glowIntensity;
                     } else if (hasShield) {
                         ctx.shadowColor = '#44ff44';
                         ctx.shadowBlur = 12;
@@ -665,15 +684,23 @@
                     ctx.shadowOffsetX = 0;
                     ctx.shadowOffsetY = 0;
                 }
-                
-                // Modify snake color based on power-ups
+                  // Modify snake color based on power-ups with blinking effect
                 let snakeColor = snake.color;
+                let colorIntensity = 1.0;
+                
+                // Apply blinking effect for expiring power-ups
+                if (speedBlinking || invincibleBlinking) {
+                    const blinkSpeed = 8; // 8 blinks per second
+                    colorIntensity = (Math.sin(Date.now() / 1000 * blinkSpeed * Math.PI) + 1) / 2;
+                    colorIntensity = 0.4 + (colorIntensity * 0.6); // Range from 0.4 to 1.0
+                }
+                
                 if (isInvincible) {
                     // Add blue tint for invincibility
-                    snakeColor = blendColors(snake.color, '#4444ff', 0.3);
+                    snakeColor = blendColors(snake.color, '#4444ff', 0.3 * colorIntensity);
                 } else if (hasSpeedBoost) {
                     // Add yellow tint for speed boost
-                    snakeColor = blendColors(snake.color, '#ffff44', 0.2);
+                    snakeColor = blendColors(snake.color, '#ffff44', 0.2 * colorIntensity);
                 }
                 
                 ctx.fillStyle = snakeColor;
@@ -1088,16 +1115,29 @@
                     scoreCard.style.boxShadow = `0 0 15px ${snake.color}80`;
                     scoreCard.style.transform = 'scale(1.05)';
                 }
-                
-                // Build power-up status
+                  // Build power-up status with new structure and blinking
                 let powerUpStatus = '';
-                if (snake.speed_boost_time > 0) {
-                    powerUpStatus += '⚡ ';
+                const powerUps = snake.power_ups || {};
+                
+                if (powerUps.speed_boost?.active) {
+                    const timeLeft = powerUps.speed_boost.time_left;
+                    const isBlinking = powerUps.speed_boost.blinking;
+                    powerUpStatus += isBlinking ? '<span class="blinking-power-up">⚡</span> ' : '⚡ ';
+                    if (timeLeft > 0) {
+                        powerUpStatus += `(${Math.ceil(timeLeft / 5)}s) `;
+                    }
                 }
-                if (snake.invincible_time > 0) {
-                    powerUpStatus += '🛡️ ';
+                
+                if (powerUps.invincible?.active) {
+                    const timeLeft = powerUps.invincible.time_left;
+                    const isBlinking = powerUps.invincible.blinking;
+                    powerUpStatus += isBlinking ? '<span class="blinking-power-up">🛡️</span> ' : '🛡️ ';
+                    if (timeLeft > 0) {
+                        powerUpStatus += `(${Math.ceil(timeLeft / 5)}s) `;
+                    }
                 }
-                if (snake.shield_active) {
+                
+                if (powerUps.shield?.active) {
                     powerUpStatus += '🔰 ';
                 }
                 

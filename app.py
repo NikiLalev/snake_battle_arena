@@ -158,8 +158,7 @@ class Snake:
                 self.alive = False
                 self.just_died = True
                 return
-        
-        # Check collision with other snakes (only if not invincible)
+          # Check collision with other snakes (only if not invincible)
         if not self.invincible_time > 0:
             for other_snake in other_snakes:
                 if other_snake != self and other_snake.alive and head in other_snake.body:
@@ -173,23 +172,56 @@ class Snake:
                         return
     
     def apply_power_up(self, effect):
-        """Apply power-up effect to snake"""
+        """Apply power-up effect to snake with configurable duration"""
+        config = POWER_UP_CONFIG
+        
         if effect == 'speed_boost':
-            self.speed_boost_time = 100  # About 20 seconds at 5 FPS
+            self.speed_boost_time = config['speed']['duration']
         elif effect == 'invincibility':
-            self.invincible_time = 75   # About 15 seconds at 5 FPS
+            self.invincible_time = config['invincible']['duration']
         elif effect == 'shield':
             self.shield_active = True
+    
+    def get_power_up_status(self):
+        """Get current power-up status for client rendering"""
+        status = {}
+        
+        # Check if any power-up is about to expire (last 3 seconds = 15 updates at 5 FPS)
+        if self.speed_boost_time > 0:
+            status['speed_boost'] = {
+                'active': True,
+                'time_left': self.speed_boost_time,
+                'blinking': self.speed_boost_time <= 15  # Blink in last 3 seconds
+            }
+        
+        if self.invincible_time > 0:
+            status['invincible'] = {
+                'active': True,
+                'time_left': self.invincible_time,
+                'blinking': self.invincible_time <= 15  # Blink in last 3 seconds
+            }
+        
+        if self.shield_active:
+            status['shield'] = {
+                'active': True,
+                'time_left': -1,  # Shield doesn't expire with time
+                'blinking': False
+            }
+        
+        return status
+
+# Power-up configuration - Easy to modify drop rates and durations
+POWER_UP_CONFIG = {
+    'normal': {'color': '#ff4444', 'weight': 70, 'growth': 1, 'effect': None, 'duration': 0},
+    'speed': {'color': '#ffff44', 'weight': 12, 'growth': 1, 'effect': 'speed_boost', 'duration': 50},  # 10 seconds at 5 FPS
+    'invincible': {'color': '#4444ff', 'weight': 8, 'growth': 1, 'effect': 'invincibility', 'duration': 50},  # 10 seconds at 5 FPS
+    'super': {'color': '#ff44ff', 'weight': 8, 'growth': 3, 'effect': None, 'duration': 0},
+    'shield': {'color': '#44ff44', 'weight': 2, 'growth': 1, 'effect': 'shield', 'duration': 0}  # Shield is one-time use
+}
 
 class Food:
-    # Food types with their properties
-    FOOD_TYPES = {
-        'normal': {'color': '#ff4444', 'weight': 50, 'growth': 1, 'effect': None},
-        'speed': {'color': '#ffff44', 'weight': 15, 'growth': 1, 'effect': 'speed_boost'},
-        'invincible': {'color': '#4444ff', 'weight': 10, 'growth': 1, 'effect': 'invincibility'},
-        'super': {'color': '#ff44ff', 'weight': 20, 'growth': 3, 'effect': None},
-        'shield': {'color': '#44ff44', 'weight': 5, 'growth': 1, 'effect': 'shield'}
-    }
+    # Food types with their properties - Now using configurable system
+    FOOD_TYPES = POWER_UP_CONFIG
     
     def __init__(self, width, height):
         self.x = random.randint(0, width - 1)
@@ -312,18 +344,15 @@ class Game:
             # Actually start the game
             self.game_running = True
             self.countdown_active = False
-            self.last_update = time.time()
-              # Send immediate game state to show movement has started
+            self.last_update = time.time()            # Send immediate game state to show movement has started
             game_state = {
                 'snakes': {pid: {
                     'body': snake.body,
                     'color': snake.color,
                     'alive': snake.alive,
                     'score': snake.score,
-                    'direction': snake.direction
-                    'speed_boost_time': snake.speed_boost_time,
-                    'invincible_time': snake.invincible_time,
-                    'shield_active': snake.shield_active
+                    'direction': snake.direction,
+                    'power_ups': snake.get_power_up_status()
                 } for pid, snake in self.snakes.items()},
                 'foods': [{'x': food.x, 'y': food.y, 'type': food.type, 'color': food.get_properties()['color']} for food in self.foods],
                 'running': True
@@ -586,8 +615,7 @@ def on_start_game():
     
     # Try to start the game (will fail if already started)
     if games[room_id].start_game():
-        emit('game_started', room=room_id)
-          # Send initial game state immediately
+        emit('game_started', room=room_id)        # Send initial game state immediately
         game = games[room_id]
         initial_game_state = {
             'snakes': {pid: {
@@ -595,10 +623,8 @@ def on_start_game():
                 'color': snake.color,
                 'alive': snake.alive,
                 'score': snake.score,
-                'direction': snake.direction
-                'speed_boost_time': snake.speed_boost_time,
-                'invincible_time': snake.invincible_time,
-                'shield_active': snake.shield_active
+                'direction': snake.direction,
+                'power_ups': snake.get_power_up_status()
             } for pid, snake in game.snakes.items()},
             'foods': [{'x': food.x, 'y': food.y, 'type': food.type, 'color': food.get_properties()['color']} for food in game.foods],
             'running': False
@@ -658,18 +684,15 @@ def game_loop():
                 # Only update if game is actually running (not in countdown)
                 if game.game_running and current_time - game.last_update > 0.2:  # 5 FPS
                     game.update()
-                    game.last_update = current_time
-                      # Send game state to all players in room
+                    game.last_update = current_time                    # Send game state to all players in room
                     game_state = {
                         'snakes': {pid: {
                             'body': snake.body,
                             'color': snake.color,
                             'alive': snake.alive,
                             'score': snake.score,
-                            'direction': snake.direction
-                            'speed_boost_time': snake.speed_boost_time,
-                            'invincible_time': snake.invincible_time,
-                            'shield_active': snake.shield_active
+                            'direction': snake.direction,
+                            'power_ups': snake.get_power_up_status()
                         } for pid, snake in game.snakes.items()},
                         'foods': [{'x': food.x, 'y': food.y, 'type': food.type, 'color': food.get_properties()['color']} for food in game.foods],
                         'running': game.game_running
