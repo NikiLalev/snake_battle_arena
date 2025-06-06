@@ -299,7 +299,7 @@ class Game:
                 # Check collision with any food
                 for i, food in enumerate(self.foods):
                     if head_pos == (food.x, food.y):
-                        snake.score += 10
+                        snake.score += 1  # 1 point per food
                         snake_growth[player_id] = True
                         foods_to_remove.append(i)
                         break  # Only eat one food per update
