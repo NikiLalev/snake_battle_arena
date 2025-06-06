@@ -639,6 +639,11 @@
                             ctx.strokeStyle = snake.color;
                             ctx.lineWidth = 1;
                             ctx.strokeRect(x + 2, y + 2, gridSize - 4, gridSize - 4);
+                            
+                            // Add direction arrow for current player (one block ahead)
+                            const arrowX = x + gridSize/2 + (snake.direction === 'RIGHT' ? gridSize : snake.direction === 'LEFT' ? -gridSize : 0);
+                            const arrowY = y + gridSize/2 + (snake.direction === 'DOWN' ? gridSize : snake.direction === 'UP' ? -gridSize : 0);
+                            drawDirectionArrow(arrowX, arrowY, snake.direction);
                         } else {
                             ctx.strokeStyle = '#fff';
                             ctx.lineWidth = 2;
@@ -721,6 +726,57 @@
         });
         
         // Helper functions
+        function drawDirectionArrow(centerX, centerY, direction) {
+            const arrowSize = 6; // Small arrow size
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 1;
+            
+            ctx.beginPath();
+            
+            // Calculate arrow points based on direction
+            let points = [];
+            switch(direction) {
+                case 'UP':
+                    points = [
+                        [centerX, centerY - arrowSize],      // tip
+                        [centerX - arrowSize/2, centerY + arrowSize/2], // left
+                        [centerX + arrowSize/2, centerY + arrowSize/2]  // right
+                    ];
+                    break;
+                case 'DOWN':
+                    points = [
+                        [centerX, centerY + arrowSize],      // tip
+                        [centerX - arrowSize/2, centerY - arrowSize/2], // left
+                        [centerX + arrowSize/2, centerY - arrowSize/2]  // right
+                    ];
+                    break;
+                case 'LEFT':
+                    points = [
+                        [centerX - arrowSize, centerY],      // tip
+                        [centerX + arrowSize/2, centerY - arrowSize/2], // top
+                        [centerX + arrowSize/2, centerY + arrowSize/2]  // bottom
+                    ];
+                    break;
+                case 'RIGHT':
+                    points = [
+                        [centerX + arrowSize, centerY],      // tip
+                        [centerX - arrowSize/2, centerY - arrowSize/2], // top
+                        [centerX - arrowSize/2, centerY + arrowSize/2]  // bottom
+                    ];
+                    break;
+            }
+            
+            // Draw the arrow
+            ctx.moveTo(points[0][0], points[0][1]);
+            ctx.lineTo(points[1][0], points[1][1]);
+            ctx.lineTo(points[2][0], points[2][1]);
+            ctx.closePath();
+            
+            ctx.fill();
+            ctx.stroke();
+        }
+
         function showPopup(type, title, message, showCloseButton = false, autoCloseTime = null) {
             // Remove any existing popups first (except mean comments)
             const existingPopups = document.querySelectorAll('.popup-overlay:not(.mean-comment-overlay)');

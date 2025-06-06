@@ -224,7 +224,8 @@ class Game:
                     'body': snake.body,
                     'color': snake.color,
                     'alive': snake.alive,
-                    'score': snake.score
+                    'score': snake.score,
+                    'direction': snake.direction
                 } for pid, snake in self.snakes.items()},
                 'foods': [{'x': food.x, 'y': food.y} for food in self.foods],
                 'running': True
@@ -475,7 +476,8 @@ def on_start_game():
                 'body': snake.body,
                 'color': snake.color,
                 'alive': snake.alive,
-                'score': snake.score
+                'score': snake.score,
+                'direction': snake.direction
             } for pid, snake in game.snakes.items()},
             'foods': [{'x': food.x, 'y': food.y} for food in game.foods],
             'running': False
@@ -543,7 +545,8 @@ def game_loop():
                             'body': snake.body,
                             'color': snake.color,
                             'alive': snake.alive,
-                            'score': snake.score
+                            'score': snake.score,
+                            'direction': snake.direction
                         } for pid, snake in game.snakes.items()},
                         'foods': [{'x': food.x, 'y': food.y} for food in game.foods],
                         'running': game.game_running
