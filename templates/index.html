@@ -294,6 +294,33 @@
         .close-popup:hover {
             background: rgba(255, 255, 255, 0.3);
         }
+
+        .power-up-legend {
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            padding: 10px;
+            margin: 10px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .power-up-legend strong {
+            color: #fff;
+            margin-right: 10px;
+        }
+
+        .power-up-legend span {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 3px 8px;
+            border-radius: 15px;
+            color: #fff;
+            font-size: 11px;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -326,7 +353,14 @@
             <canvas id="gameCanvas" width="800" height="600"></canvas>
             <div class="controls">
                 <p>🎮 Use Arrow Keys or WASD to move</p>
-                <p>🍎 Eat red food to grow and score points</p>
+                <div class="power-up-legend">
+                    <strong>🎯 Power-Up Foods:</strong>
+                    <span>🔴 Normal (+1)</span>
+                    <span>⭐ Speed Boost</span>
+                    <span>💎 Invincibility</span>
+                    <span>🟣 Super Food (+3)</span>
+                    <span>🛡️ Shield</span>
+                </div>
                 <p>⚠️ Avoid walls and other snakes</p>
             </div>
         </div>
@@ -504,7 +538,7 @@
             // Don't set gameRunning = true here, wait for actual game state
         });
           socket.on('countdown', (data) => {
-            console.log('Countdown:', data.count);
+            console.log('Countdown:', data);
             
             // Show countdown overlay
             countdownOverlay.style.display = 'flex';
@@ -606,28 +640,52 @@
                     console.log(`  - SKIPPING (dead)`);
                     continue;
                 }
+                  const isCurrentPlayer = playerId === currentPlayerId;
                 
-                const isCurrentPlayer = playerId === currentPlayerId;
+                // Check for power-up effects
+                const hasSpeedBoost = snake.speed_boost_time > 0;
+                const isInvincible = snake.invincible_time > 0;
+                const hasShield = snake.shield_active;
                 
-                // Add glow effect for current player
-                if (isCurrentPlayer) {
-                    ctx.shadowColor = snake.color;
-                    ctx.shadowBlur = 15;
+                // Add glow effect for current player and power-ups
+                if (isCurrentPlayer || hasSpeedBoost || isInvincible || hasShield) {
+                    if (isInvincible) {
+                        ctx.shadowColor = '#4444ff';
+                        ctx.shadowBlur = 20;
+                    } else if (hasSpeedBoost) {
+                        ctx.shadowColor = '#ffff44';
+                        ctx.shadowBlur = 15;
+                    } else if (hasShield) {
+                        ctx.shadowColor = '#44ff44';
+                        ctx.shadowBlur = 12;
+                    } else {
+                        ctx.shadowColor = snake.color;
+                        ctx.shadowBlur = 15;
+                    }
                     ctx.shadowOffsetX = 0;
                     ctx.shadowOffsetY = 0;
                 }
                 
-                ctx.fillStyle = snake.color;
+                // Modify snake color based on power-ups
+                let snakeColor = snake.color;
+                if (isInvincible) {
+                    // Add blue tint for invincibility
+                    snakeColor = blendColors(snake.color, '#4444ff', 0.3);
+                } else if (hasSpeedBoost) {
+                    // Add yellow tint for speed boost
+                    snakeColor = blendColors(snake.color, '#ffff44', 0.2);
+                }
+                
+                ctx.fillStyle = snakeColor;
                 
                 for (const [index, segment] of snake.body.entries()) {
                     const x = segment[0] * gridSize;
                     const y = segment[1] * gridSize;
                     
                     console.log(`  - Drawing segment ${index} at grid(${segment[0]}, ${segment[1]}) = canvas(${x}, ${y})`);
-                    
-                    if (index === 0) {
+                      if (index === 0) {
                         // Head - make it more visible
-                        ctx.fillStyle = snake.color;
+                        ctx.fillStyle = snakeColor;
                         ctx.fillRect(x + 1, y + 1, gridSize - 2, gridSize - 2);
                         
                         // Add border for head (enhanced for current player)
@@ -636,7 +694,7 @@
                             ctx.lineWidth = 3;
                             ctx.strokeRect(x + 1, y + 1, gridSize - 2, gridSize - 2);
                             // Add inner glow border
-                            ctx.strokeStyle = snake.color;
+                            ctx.strokeStyle = snakeColor;
                             ctx.lineWidth = 1;
                             ctx.strokeRect(x + 2, y + 2, gridSize - 4, gridSize - 4);
                             
@@ -649,9 +707,18 @@
                             ctx.lineWidth = 2;
                             ctx.strokeRect(x + 1, y + 1, gridSize - 2, gridSize - 2);
                         }
+                        
+                        // Draw shield effect around head if active
+                        if (hasShield) {
+                            ctx.strokeStyle = '#44ff44';
+                            ctx.lineWidth = 3;
+                            ctx.setLineDash([5, 5]);
+                            ctx.strokeRect(x - 2, y - 2, gridSize + 4, gridSize + 4);
+                            ctx.setLineDash([]); // Reset line dash
+                        }
                     } else {
                         // Body
-                        ctx.fillStyle = snake.color;
+                        ctx.fillStyle = snakeColor;
                         if (isCurrentPlayer) {
                             // Slightly larger body segments for current player
                             ctx.fillRect(x + 2, y + 2, gridSize - 4, gridSize - 4);
@@ -662,33 +729,57 @@
                 }
                 
                 // Reset shadow for other snakes
-                if (isCurrentPlayer) {
-                    ctx.shadowBlur = 0;
-                }
+                if (isCurrentPlayer) ctx.shadowBlur = 0;
             }
-            
-            // Draw foods
+              // Draw foods
             console.log('=== DRAWING FOODS ===');
             console.log(`Total foods: ${gameState.foods.length}`);
             
             gameState.foods.forEach((food, index) => {
-                console.log(`Food ${index + 1} at grid(${food.x}, ${food.y})`);
+                console.log(`Food ${index + 1} at grid(${food.x}, ${food.y}) - Type: ${food.type}, Color: ${food.color}`);
                 const foodX = (food.x * gridSize) + (gridSize / 2);
                 const foodY = (food.y * gridSize) + (gridSize / 2);
                 console.log(`Food ${index + 1} at canvas(${foodX}, ${foodY})`);
                 
-                ctx.fillStyle = '#ff4444';
-                ctx.beginPath();
-                ctx.arc(foodX, foodY, gridSize / 3, 0, 2 * Math.PI);
-                ctx.fill();
+                // Use the food's specific color
+                ctx.fillStyle = food.color || '#ff4444';
                 
-                // Add a slight glow effect to make multiple foods more visible
-                ctx.shadowColor = '#ff4444';
-                ctx.shadowBlur = 8;
-                ctx.beginPath();
-                ctx.arc(foodX, foodY, gridSize / 4, 0, 2 * Math.PI);
-                ctx.fill();
-                ctx.shadowBlur = 0; // Reset shadow
+                // Different shapes based on food type
+                if (food.type === 'normal') {
+                    // Regular circle for normal food
+                    ctx.beginPath();
+                    ctx.arc(foodX, foodY, gridSize / 3, 0, 2 * Math.PI);
+                    ctx.fill();
+                } else if (food.type === 'speed') {
+                    // Star shape for speed boost
+                    drawStar(ctx, foodX, foodY, 5, gridSize / 3, gridSize / 6);
+                } else if (food.type === 'invincible') {
+                    // Diamond shape for invincibility
+                    drawDiamond(ctx, foodX, foodY, gridSize / 3);
+                } else if (food.type === 'super') {
+                    // Larger circle for super food
+                    ctx.beginPath();
+                    ctx.arc(foodX, foodY, gridSize / 2.5, 0, 2 * Math.PI);
+                    ctx.fill();
+                } else if (food.type === 'shield') {
+                    // Shield shape
+                    drawShield(ctx, foodX, foodY, gridSize / 3);
+                } else {
+                    // Fallback to circle
+                    ctx.beginPath();
+                    ctx.arc(foodX, foodY, gridSize / 3, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+                
+                // Add glow effect for special foods
+                if (food.type !== 'normal') {
+                    ctx.shadowColor = food.color || '#ff4444';
+                    ctx.shadowBlur = 12;
+                    ctx.beginPath();
+                    ctx.arc(foodX, foodY, gridSize / 4, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.shadowBlur = 0; // Reset shadow
+                }
             });
             
             // Update scoreboard
@@ -723,6 +814,17 @@
             if (data.foods_count > 0) {
                 showStatus(`💥 ${data.player_name} died and dropped ${data.foods_count} foods! (${data.total_foods} total on field)`);
             }
+        });
+        
+        socket.on('power_up_activated', (data) => {
+            console.log('Power-up activated:', data);
+            const effectNames = {
+                'speed_boost': '⚡ Speed Boost',
+                'invincibility': '🛡️ Invincibility',
+                'shield': '🔰 Shield Protection'
+            };
+            const effectName = effectNames[data.effect] || data.effect;
+            showStatus(`${effectName} activated by ${data.player_name}!`);
         });
         
         // Helper functions
@@ -971,8 +1073,7 @@
                 playersListDiv.appendChild(playerCard);
             });
         }
-        
-        function updateScoreboard(snakes) {
+          function updateScoreboard(snakes) {
             scoreboardDiv.innerHTML = '';
             for (const [playerId, snake] of Object.entries(snakes)) {
                 const scoreCard = document.createElement('div');
@@ -988,9 +1089,21 @@
                     scoreCard.style.transform = 'scale(1.05)';
                 }
                 
+                // Build power-up status
+                let powerUpStatus = '';
+                if (snake.speed_boost_time > 0) {
+                    powerUpStatus += '⚡ ';
+                }
+                if (snake.invincible_time > 0) {
+                    powerUpStatus += '🛡️ ';
+                }
+                if (snake.shield_active) {
+                    powerUpStatus += '🔰 ';
+                }
+                
                 scoreCard.innerHTML = `
                     <div style="color: ${snake.color}; font-weight: ${isCurrentPlayer ? 'bold' : 'normal'}">
-                        ${isCurrentPlayer ? '👤 You' : 'Player'}
+                        ${isCurrentPlayer ? '👤 You' : 'Player'} ${powerUpStatus}
                     </div>
                     <div>Score: ${snake.score}</div>
                     <div>${snake.alive ? '🐍 Alive' : '💀 Dead'}</div>
@@ -1011,6 +1124,76 @@
                 joinRoomBtn.click();
             }
         });
+        
+        // Helper functions for drawing food shapes
+        function drawStar(ctx, x, y, spikes, outerRadius, innerRadius) {
+            let rot = Math.PI / 2 * 3;
+            let cx = x;
+            let cy = y;
+            let step = Math.PI / spikes;
+            
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - outerRadius);
+            
+            for (let i = 0; i < spikes; i++) {
+                let x1 = cx + Math.cos(rot) * outerRadius;
+                let y1 = cy + Math.sin(rot) * outerRadius;
+                ctx.lineTo(x1, y1);
+                rot += step;
+                
+                let x2 = cx + Math.cos(rot) * innerRadius;
+                let y2 = cy + Math.sin(rot) * innerRadius;
+                ctx.lineTo(x2, y2);
+                rot += step;
+            }
+            
+            ctx.lineTo(cx, cy - outerRadius);
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        function drawDiamond(ctx, x, y, size) {
+            ctx.beginPath();
+            ctx.moveTo(x, y - size);
+            ctx.lineTo(x + size, y);
+            ctx.lineTo(x, y + size);
+            ctx.lineTo(x - size, y);
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        function drawShield(ctx, x, y, size) {
+            ctx.beginPath();
+            ctx.moveTo(x, y - size);
+            ctx.quadraticCurveTo(x + size, y - size/2, x + size/2, y);
+            ctx.quadraticCurveTo(x, y + size/2, x, y + size);
+            ctx.quadraticCurveTo(x, y + size/2, x - size/2, y);
+            ctx.quadraticCurveTo(x - size, y - size/2, x, y - size);
+            ctx.fill();
+        }
+        
+        // Helper function to blend colors
+        function blendColors(color1, color2, ratio) {
+            // Convert hex to RGB
+            const hex1 = color1.replace('#', '');
+            const hex2 = color2.replace('#', '');
+            
+            const r1 = parseInt(hex1.substr(0, 2), 16);
+            const g1 = parseInt(hex1.substr(2, 2), 16);
+            const b1 = parseInt(hex1.substr(4, 2), 16);
+            
+            const r2 = parseInt(hex2.substr(0, 2), 16);
+            const g2 = parseInt(hex2.substr(2, 2), 16);
+            const b2 = parseInt(hex2.substr(4, 2), 16);
+            
+            // Blend
+            const r = Math.round(r1 * (1 - ratio) + r2 * ratio);
+            const g = Math.round(g1 * (1 - ratio) + g2 * ratio);
+            const b = Math.round(b1 * (1 - ratio) + b2 * ratio);
+            
+            // Convert back to hex
+            return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        }
     </script>
 </body>
 </html>

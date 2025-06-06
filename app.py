@@ -73,9 +73,29 @@ class Snake:
         self.alive = True
         self.score = 0
         self.just_died = False  # New field to track fresh deaths
+        
+        # Power-up effects
+        self.speed_boost_time = 0  # Remaining time for speed boost (in updates)
+        self.invincible_time = 0   # Remaining time for invincibility
+        self.shield_active = False # One-time shield protection        self.normal_move_delay = 1 # Normal movement (every update)
+        self.speed_move_delay = 0.5 # Fast movement (every other update)
+        self.move_counter = 0      # Counter for speed boost timing
     
     def move(self):
         if not self.alive or not self.body:
+            return
+        
+        # Handle speed boost timing
+        if self.speed_boost_time > 0:
+            self.move_counter += 1
+            # With speed boost, move every update (faster)
+            should_move = True
+            self.speed_boost_time -= 1
+        else:
+            # Normal speed - move every update
+            should_move = True
+        
+        if not should_move:
             return
             
         head = self.body[0]
@@ -87,42 +107,111 @@ class Snake:
         elif self.direction == 'LEFT':
             new_head = (head[0] - 1, head[1])
         elif self.direction == 'RIGHT':
-            new_head = (head[0] + 1, head[1])
+            new_head = (head[0] + 1, head[1])        
         else:
             return
         
         self.body.insert(0, new_head)
     
     def check_collision(self, width, height, other_snakes):
-        if not self.alive:
+        if not self.alive or not self.body:
             return
+        
+        # Update power-up timers
+        if self.invincible_time > 0:
+            self.invincible_time -= 1
             
         head = self.body[0]
-        was_alive = self.alive
         
-        # Wall collision
-        if head[0] < 0 or head[0] >= width or head[1] < 0 or head[1] >= height:
-            self.alive = False
-        
-        # Self collision
-        elif head in self.body[1:]:
-            self.alive = False
-        
-        # Other snakes collision
-        else:
-            for snake in other_snakes:
-                if snake != self and head in snake.body:
+        # Check wall collision (only if not invincible)
+        if not self.invincible_time > 0:
+            if head[0] < 0 or head[0] >= width or head[1] < 0 or head[1] >= height:
+                if self.shield_active:
+                    # Shield protects once, then deactivates
+                    self.shield_active = False
+                    # Move snake away from wall
+                    if head[0] < 0:
+                        self.body[0] = (0, head[1])
+                    elif head[0] >= width:
+                        self.body[0] = (width - 1, head[1])
+                    elif head[1] < 0:
+                        self.body[0] = (head[0], 0)
+                    elif head[1] >= height:
+                        self.body[0] = (head[0], height - 1)
+                    return
+                else:
                     self.alive = False
-                    break
+                    self.just_died = True
+                    return
         
-        # Mark as just died if it was alive and now isn't
-        if was_alive and not self.alive:
-            self.just_died = True
+        # Check self collision (only if not invincible)
+        if not self.invincible_time > 0 and head in self.body[1:]:
+            if self.shield_active:
+                # Shield protects once, then deactivates
+                self.shield_active = False
+                # Remove the colliding segment
+                if head in self.body[1:]:
+                    collision_index = self.body[1:].index(head) + 1
+                    self.body = self.body[:collision_index]
+                return
+            else:
+                self.alive = False
+                self.just_died = True
+                return
+        
+        # Check collision with other snakes (only if not invincible)
+        if not self.invincible_time > 0:
+            for other_snake in other_snakes:
+                if other_snake != self and other_snake.alive and head in other_snake.body:
+                    if self.shield_active:
+                        # Shield protects once, then deactivates
+                        self.shield_active = False
+                        return
+                    else:
+                        self.alive = False
+                        self.just_died = True
+                        return
+    
+    def apply_power_up(self, effect):
+        """Apply power-up effect to snake"""
+        if effect == 'speed_boost':
+            self.speed_boost_time = 100  # About 20 seconds at 5 FPS
+        elif effect == 'invincibility':
+            self.invincible_time = 75   # About 15 seconds at 5 FPS
+        elif effect == 'shield':
+            self.shield_active = True
 
 class Food:
+    # Food types with their properties
+    FOOD_TYPES = {
+        'normal': {'color': '#ff4444', 'weight': 50, 'growth': 1, 'effect': None},
+        'speed': {'color': '#ffff44', 'weight': 15, 'growth': 1, 'effect': 'speed_boost'},
+        'invincible': {'color': '#4444ff', 'weight': 10, 'growth': 1, 'effect': 'invincibility'},
+        'super': {'color': '#ff44ff', 'weight': 20, 'growth': 3, 'effect': None},
+        'shield': {'color': '#44ff44', 'weight': 5, 'growth': 1, 'effect': 'shield'}
+    }
+    
     def __init__(self, width, height):
         self.x = random.randint(0, width - 1)
         self.y = random.randint(0, height - 1)
+        self.type = self._choose_food_type()
+        
+    def _choose_food_type(self):
+        """Choose food type based on weighted probabilities"""
+        total_weight = sum(food_data['weight'] for food_data in self.FOOD_TYPES.values())
+        random_num = random.randint(1, total_weight)
+        
+        current_weight = 0
+        for food_type, food_data in self.FOOD_TYPES.items():
+            current_weight += food_data['weight']
+            if random_num <= current_weight:
+                return food_type
+        
+        return 'normal'  # Fallback
+    
+    def get_properties(self):
+        """Get the properties of this food type"""
+        return self.FOOD_TYPES[self.type]
     
     def respawn(self, width, height, snakes):
         while True:
@@ -138,6 +227,9 @@ class Food:
             
             if not collision:
                 break
+        
+        # Choose new type when respawning
+        self.type = self._choose_food_type()
 
 class Game:
     def __init__(self, room_id):
@@ -180,8 +272,7 @@ class Game:
             
         self.countdown_active = True
         self.game_started = True
-        
-        # Reset all snakes to starting positions
+          # Reset all snakes to starting positions
         start_positions = [(5, 5), (35, 5), (5, 25), (35, 25)]
         for i, (player_id, snake) in enumerate(self.snakes.items()):
             start_pos = start_positions[i % len(start_positions)]
@@ -190,6 +281,11 @@ class Game:
             snake.alive = True
             snake.score = 0
             snake.just_died = False
+            # Reset power-up effects
+            snake.speed_boost_time = 0
+            snake.invincible_time = 0
+            snake.shield_active = False
+            snake.move_counter = 0
         
         # Reset death tracking
         self.dead_players.clear()
@@ -217,8 +313,7 @@ class Game:
             self.game_running = True
             self.countdown_active = False
             self.last_update = time.time()
-            
-            # Send immediate game state to show movement has started
+              # Send immediate game state to show movement has started
             game_state = {
                 'snakes': {pid: {
                     'body': snake.body,
@@ -226,8 +321,11 @@ class Game:
                     'alive': snake.alive,
                     'score': snake.score,
                     'direction': snake.direction
+                    'speed_boost_time': snake.speed_boost_time,
+                    'invincible_time': snake.invincible_time,
+                    'shield_active': snake.shield_active
                 } for pid, snake in self.snakes.items()},
-                'foods': [{'x': food.x, 'y': food.y} for food in self.foods],
+                'foods': [{'x': food.x, 'y': food.y, 'type': food.type, 'color': food.get_properties()['color']} for food in self.foods],
                 'running': True
             }
             socketio.emit('game_state', game_state, room=self.room_id)
@@ -286,22 +384,28 @@ class Game:
                         'player_name': player_name,
                         'foods_count': foods_to_spawn,
                         'total_foods': len(self.foods)
-                    }, room=self.room_id)
-        
-        # Check food collision and handle snake growth
+                    }, room=self.room_id)        # Check food collision and handle snake growth
         foods_to_remove = []
         snake_growth = {}  # Track which snakes should grow
+        food_effects = {}  # Track power-up effects to apply
         
         for player_id, snake in self.snakes.items():
             if snake.alive and len(snake.body) > 0:
                 head_pos = snake.body[0]
-                snake_growth[player_id] = False
+                snake_growth[player_id] = 0  # Track how much to grow
                 
                 # Check collision with any food
                 for i, food in enumerate(self.foods):
                     if head_pos == (food.x, food.y):
+                        food_props = food.get_properties()
                         snake.score += 1  # 1 point per food
-                        snake_growth[player_id] = True
+                        snake_growth[player_id] = food_props['growth']  # Growth amount
+                        
+                        # Apply power-up effect if any
+                        if food_props['effect']:
+                            snake.apply_power_up(food_props['effect'])
+                            food_effects[player_id] = food_props['effect']
+                        
                         foods_to_remove.append(i)
                         break  # Only eat one food per update
         
@@ -309,12 +413,27 @@ class Game:
         for food_index in sorted(foods_to_remove, reverse=True):
             del self.foods[food_index]
         
-        # Handle snake movement and growth
+        # Send power-up activation notifications
+        for player_id, effect in food_effects.items():
+            player_name = self.players[player_id]['name']
+            socketio.emit('power_up_activated', {
+                'player_name': player_name,
+                'effect': effect
+            }, room=self.room_id)        # Handle snake movement and growth
         for player_id, snake in self.snakes.items():
             if snake.alive and len(snake.body) > 1:
-                # Only remove tail if no food was eaten (normal movement)
-                if not snake_growth.get(player_id, False):
+                # Handle growth based on food type
+                growth_amount = snake_growth.get(player_id, 0)
+                if growth_amount == 0:
+                    # Normal movement - remove tail
                     snake.body.pop()
+                else:
+                    # Growth - don't remove tail for this update, and add extra segments
+                    for _ in range(growth_amount - 1):
+                        # Add extra segments at current tail position
+                        if len(snake.body) > 0:
+                            tail_pos = snake.body[-1]
+                            snake.body.append(tail_pos)
         
         # Ensure there's always at least one food on the field
         if len(self.foods) == 0:
@@ -468,8 +587,7 @@ def on_start_game():
     # Try to start the game (will fail if already started)
     if games[room_id].start_game():
         emit('game_started', room=room_id)
-        
-        # Send initial game state immediately
+          # Send initial game state immediately
         game = games[room_id]
         initial_game_state = {
             'snakes': {pid: {
@@ -478,8 +596,11 @@ def on_start_game():
                 'alive': snake.alive,
                 'score': snake.score,
                 'direction': snake.direction
+                'speed_boost_time': snake.speed_boost_time,
+                'invincible_time': snake.invincible_time,
+                'shield_active': snake.shield_active
             } for pid, snake in game.snakes.items()},
-            'foods': [{'x': food.x, 'y': food.y} for food in game.foods],
+            'foods': [{'x': food.x, 'y': food.y, 'type': food.type, 'color': food.get_properties()['color']} for food in game.foods],
             'running': False
         }
         socketio.emit('game_state', initial_game_state, room=room_id)
@@ -538,8 +659,7 @@ def game_loop():
                 if game.game_running and current_time - game.last_update > 0.2:  # 5 FPS
                     game.update()
                     game.last_update = current_time
-                    
-                    # Send game state to all players in room
+                      # Send game state to all players in room
                     game_state = {
                         'snakes': {pid: {
                             'body': snake.body,
@@ -547,8 +667,11 @@ def game_loop():
                             'alive': snake.alive,
                             'score': snake.score,
                             'direction': snake.direction
+                            'speed_boost_time': snake.speed_boost_time,
+                            'invincible_time': snake.invincible_time,
+                            'shield_active': snake.shield_active
                         } for pid, snake in game.snakes.items()},
-                        'foods': [{'x': food.x, 'y': food.y} for food in game.foods],
+                        'foods': [{'x': food.x, 'y': food.y, 'type': food.type, 'color': food.get_properties()['color']} for food in game.foods],
                         'running': game.game_running
                     }
                     
