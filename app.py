@@ -195,6 +195,9 @@ class Game:
         self.dead_players.clear()
         self.game_winner = None
         
+        # Reset foods to just one
+        self.foods = [Food(CANVAS_WIDTH // GRID_SIZE, CANVAS_HEIGHT // GRID_SIZE)]
+        
         # Start countdown in separate thread
         countdown_thread = threading.Thread(target=self.countdown, daemon=True)
         countdown_thread.start()
@@ -257,16 +260,19 @@ class Game:
                 player_name = self.players[player_id]['name']
                 player_score = snake.score
                 
-                # Spawn foods based on the dead player's score
-                foods_to_spawn = player_score // 10  # Each 10 points = 1 food
-                width = CANVAS_WIDTH // GRID_SIZE
-                height = CANVAS_HEIGHT // GRID_SIZE
-                
-                for _ in range(foods_to_spawn):
-                    new_food = Food(width, height)
-                    # Make sure new food doesn't spawn on snakes
-                    new_food.respawn(width, height, list(self.snakes.values()))
-                    self.foods.append(new_food)
+                # Spawn foods based on the dead player's score (only if 3+ players)
+                if len(self.players) >= 3:
+                    foods_to_spawn = player_score  # Full score = number of foods
+                    width = CANVAS_WIDTH // GRID_SIZE
+                    height = CANVAS_HEIGHT // GRID_SIZE
+                    
+                    for _ in range(foods_to_spawn):
+                        new_food = Food(width, height)
+                        # Make sure new food doesn't spawn on snakes
+                        new_food.respawn(width, height, list(self.snakes.values()))
+                        self.foods.append(new_food)
+                else:
+                    foods_to_spawn = 0  # No food spawning with less than 3 players
                 
                 # Emit death event to the specific player
                 socketio.emit('player_died', {

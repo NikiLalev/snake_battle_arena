@@ -717,7 +717,9 @@
 
         socket.on('foods_spawned', (data) => {
             console.log('Foods spawned:', data);
-            showStatus(`💥 ${data.player_name} died! ${data.foods_count} foods scattered! (${data.total_foods} total foods on field)`);
+            if (data.foods_count > 0) {
+                showStatus(`💥 ${data.player_name} died and dropped ${data.foods_count} foods! (${data.total_foods} total on field)`);
+            }
         });
         
         // Helper functions
