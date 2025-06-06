@@ -460,7 +460,7 @@
             console.log('=== GAME STATE RECEIVED ===');
             console.log('Game running:', gameState.running);
             console.log('Snakes data:', gameState.snakes);
-            console.log('Food data:', gameState.food);
+            console.log('Foods data:', gameState.foods);
             
             if (!canvas || !ctx) {
                 console.log('Canvas not ready, initializing...');
@@ -582,17 +582,29 @@
                 }
             }
             
-            // Draw food
-            console.log('=== DRAWING FOOD ===');
-            console.log(`Food at grid(${gameState.food.x}, ${gameState.food.y})`);
-            const foodX = (gameState.food.x * gridSize) + (gridSize / 2);
-            const foodY = (gameState.food.y * gridSize) + (gridSize / 2);
-            console.log(`Food at canvas(${foodX}, ${foodY})`);
+            // Draw foods
+            console.log('=== DRAWING FOODS ===');
+            console.log(`Total foods: ${gameState.foods.length}`);
             
-            ctx.fillStyle = '#ff4444';
-            ctx.beginPath();
-            ctx.arc(foodX, foodY, gridSize / 3, 0, 2 * Math.PI);
-            ctx.fill();
+            gameState.foods.forEach((food, index) => {
+                console.log(`Food ${index + 1} at grid(${food.x}, ${food.y})`);
+                const foodX = (food.x * gridSize) + (gridSize / 2);
+                const foodY = (food.y * gridSize) + (gridSize / 2);
+                console.log(`Food ${index + 1} at canvas(${foodX}, ${foodY})`);
+                
+                ctx.fillStyle = '#ff4444';
+                ctx.beginPath();
+                ctx.arc(foodX, foodY, gridSize / 3, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Add a slight glow effect to make multiple foods more visible
+                ctx.shadowColor = '#ff4444';
+                ctx.shadowBlur = 8;
+                ctx.beginPath();
+                ctx.arc(foodX, foodY, gridSize / 4, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.shadowBlur = 0; // Reset shadow
+            });
             
             // Update scoreboard
             updateScoreboard(gameState.snakes);
@@ -619,6 +631,11 @@
         socket.on('mean_comment', (data) => {
             console.log('Mean comment:', data);
             showMeanComment(data.comment);
+        });
+
+        socket.on('foods_spawned', (data) => {
+            console.log('Foods spawned:', data);
+            showStatus(`💥 ${data.player_name} died! ${data.foods_count} foods scattered! (${data.total_foods} total foods on field)`);
         });
         
         // Helper functions

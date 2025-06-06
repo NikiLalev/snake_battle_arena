@@ -144,7 +144,7 @@ class Game:
         self.room_id = room_id
         self.players = {}
         self.snakes = {}
-        self.food = Food(CANVAS_WIDTH // GRID_SIZE, CANVAS_HEIGHT // GRID_SIZE)
+        self.foods = [Food(CANVAS_WIDTH // GRID_SIZE, CANVAS_HEIGHT // GRID_SIZE)]  # List of foods
         self.game_running = False
         self.countdown_active = False
         self.game_started = False
@@ -223,7 +223,7 @@ class Game:
                     'alive': snake.alive,
                     'score': snake.score
                 } for pid, snake in self.snakes.items()},
-                'food': {'x': self.food.x, 'y': self.food.y},
+                'foods': [{'x': food.x, 'y': food.y} for food in self.foods],
                 'running': True
             }
             socketio.emit('game_state', game_state, room=self.room_id)
@@ -255,27 +255,67 @@ class Game:
                 snake.just_died = False  # Reset the flag
                 self.dead_players.add(player_id)
                 player_name = self.players[player_id]['name']
+                player_score = snake.score
+                
+                # Spawn foods based on the dead player's score
+                foods_to_spawn = player_score // 10  # Each 10 points = 1 food
+                width = CANVAS_WIDTH // GRID_SIZE
+                height = CANVAS_HEIGHT // GRID_SIZE
+                
+                for _ in range(foods_to_spawn):
+                    new_food = Food(width, height)
+                    # Make sure new food doesn't spawn on snakes
+                    new_food.respawn(width, height, list(self.snakes.values()))
+                    self.foods.append(new_food)
                 
                 # Emit death event to the specific player
                 socketio.emit('player_died', {
                     'player_name': player_name
                 }, room=player_id)
+                
+                # Emit to all players that foods were spawned
+                if foods_to_spawn > 0:
+                    socketio.emit('foods_spawned', {
+                        'player_name': player_name,
+                        'foods_count': foods_to_spawn,
+                        'total_foods': len(self.foods)
+                    }, room=self.room_id)
         
         # Check food collision and handle snake growth
-        food_eaten = False
+        foods_to_remove = []
+        snake_growth = {}  # Track which snakes should grow
+        
         for player_id, snake in self.snakes.items():
-            if snake.alive and len(snake.body) > 0 and snake.body[0] == (self.food.x, self.food.y):
-                snake.score += 10
-                food_eaten = True
-                # Don't remove tail when food is eaten (snake grows)
-            else:
-                # Remove tail if no food eaten (normal movement)
-                if snake.alive and len(snake.body) > 1:
+            if snake.alive and len(snake.body) > 0:
+                head_pos = snake.body[0]
+                snake_growth[player_id] = False
+                
+                # Check collision with any food
+                for i, food in enumerate(self.foods):
+                    if head_pos == (food.x, food.y):
+                        snake.score += 10
+                        snake_growth[player_id] = True
+                        foods_to_remove.append(i)
+                        break  # Only eat one food per update
+        
+        # Remove eaten foods (in reverse order to maintain indices)
+        for food_index in sorted(foods_to_remove, reverse=True):
+            del self.foods[food_index]
+        
+        # Handle snake movement and growth
+        for player_id, snake in self.snakes.items():
+            if snake.alive and len(snake.body) > 1:
+                # Only remove tail if no food was eaten (normal movement)
+                if not snake_growth.get(player_id, False):
                     snake.body.pop()
         
-        # Respawn food if it was eaten
-        if food_eaten:
-            self.food.respawn(width, height, list(self.snakes.values()))
+        # Ensure there's always at least one food on the field
+        if len(self.foods) == 0:
+            width = CANVAS_WIDTH // GRID_SIZE
+            height = CANVAS_HEIGHT // GRID_SIZE
+            new_food = Food(width, height)
+            new_food.respawn(width, height, list(self.snakes.values()))
+            self.foods.append(new_food)
         
         # Check if game should end
         alive_snakes = [(pid, s) for pid, s in self.snakes.items() if s.alive]
@@ -431,7 +471,7 @@ def on_start_game():
                 'alive': snake.alive,
                 'score': snake.score
             } for pid, snake in game.snakes.items()},
-            'food': {'x': game.food.x, 'y': game.food.y},
+            'foods': [{'x': food.x, 'y': food.y} for food in game.foods],
             'running': False
         }
         socketio.emit('game_state', initial_game_state, room=room_id)
@@ -499,7 +539,7 @@ def game_loop():
                             'alive': snake.alive,
                             'score': snake.score
                         } for pid, snake in game.snakes.items()},
-                        'food': {'x': game.food.x, 'y': game.food.y},
+                        'foods': [{'x': food.x, 'y': food.y} for food in game.foods],
                         'running': game.game_running
                     }
                     
